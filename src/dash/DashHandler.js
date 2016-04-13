@@ -132,7 +132,7 @@ function DashHandler(config) {
         if (!baseURL || (destination === baseURL.url) || (!urlUtils.isRelative(destination))) {
             url = destination;
         } else {
-            url = baseURL.url + destination;
+            url = baseURL.url + (destination || '');
             serviceLocation = baseURL.serviceLocation;
         }
 

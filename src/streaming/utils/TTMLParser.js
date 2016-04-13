@@ -420,10 +420,10 @@ function TTMLParser() {
             '-ms-writing-mode': 'lr-tb, horizontal-tb;',
             '-webkit-writing-mode': 'horizontal-tb;',
             '-moz-writing-mode': 'horizontal-tb;',
-            'writing-mode': 'horizontal-tb;'
+            'writing-mode': 'horizontal-tb;',
+            'color': 'rgb(255,255,255);',
         };
         defaultStyleProperties = {
-            'color': 'rgb(255,255,255);',
             'direction': 'ltr;',
             'font-family': 'monospace, sans-serif;',
             'font-style': 'normal;',
@@ -903,7 +903,7 @@ function TTMLParser() {
 
     //Return the cellResolution defined by the TTML document.
     function getCellResolution() {
-        var defaultCellResolution = [32, 15]; // Default cellResolution.
+        var defaultCellResolution = [42, 23]; // Default cellResolution.
         if (ttml.tt.hasOwnProperty('ttp:cellResolution')) {
             return ttml.tt['ttp:cellResolution'].split(' ').map(parseFloat);
         } else {

@@ -218,8 +218,8 @@ function TextTracks() {
         var track = this.getCurrentTextTrack();
         if (track && track.renderingType === 'html') {
             // Create aspect ratio from cellResolutions
-            let aspectRatio = 1;
-            if (track.cellResolution) {
+            let aspectRatio = video.videoWidth / video.videoHeight;
+            if (false && track.cellResolution) {
                 aspectRatio = track.cellResolution[0] / track.cellResolution[1];
             }
             let use80Percent = false;
