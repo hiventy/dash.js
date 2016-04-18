@@ -903,7 +903,8 @@ function TTMLParser() {
 
     //Return the cellResolution defined by the TTML document.
     function getCellResolution() {
-        var defaultCellResolution = [32, 15]; // Default cellResolution.
+        // var defaultCellResolution = [32, 15]; // Default cellResolution.
+        var defaultCellResolution = [42, 23]; // Hiventy default cellResolution.
         if (ttml.tt.hasOwnProperty('ttp:cellResolution')) {
             return ttml.tt['ttp:cellResolution'].split(' ').map(parseFloat);
         } else {

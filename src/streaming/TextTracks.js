@@ -222,6 +222,7 @@ function TextTracks() {
             if (track.cellResolution) {
                 aspectRatio = track.cellResolution[0] / track.cellResolution[1];
             }
+            aspectRatio = video.videoWidth / video.videoHeight;
             let use80Percent = false;
             if (track.isFromCEA608) {
                 // If this is CEA608 then use predefined aspect ratio
