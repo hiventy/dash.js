@@ -420,10 +420,10 @@ function TTMLParser() {
             '-ms-writing-mode': 'lr-tb, horizontal-tb;',
             '-webkit-writing-mode': 'horizontal-tb;',
             '-moz-writing-mode': 'horizontal-tb;',
-            'writing-mode': 'horizontal-tb;'
+            'writing-mode': 'horizontal-tb;',
+            'color': 'rgb(255,255,255);',
         };
         defaultStyleProperties = {
-            'color': 'rgb(255,255,255);',
             'direction': 'ltr;',
             'font-family': 'monospace, sans-serif;',
             'font-style': 'normal;',
