@@ -114,7 +114,10 @@ function PlaybackController() {
     function play() {
         if (element) {
             element.autoplay = true;
-            element.play();
+            const p = element.play();
+            if (p && p instanceof Promise) {
+                p.catch(e => { console.log(e); });
+            }
         } else {
             playOnceInitialized = true;
         }
