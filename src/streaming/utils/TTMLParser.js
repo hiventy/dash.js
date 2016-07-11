@@ -505,7 +505,8 @@ function TTMLParser() {
         var test = timingRegex.test(timingStr);
         var timeParts,
             parsedTime,
-            frameRate;
+            frameRate,
+            frameRateMultiplier;
 
         if (!test) {
             // Return NaN so it will throw an exception at internalParse if the time is incorrect.
@@ -528,7 +529,9 @@ function TTMLParser() {
                 return NaN;
             }
         }
-        return parsedTime;
+
+        frameRateMultiplier = getFrameRateMultiplier();
+        return parsedTime * frameRateMultiplier[1] / frameRateMultiplier[0];
     }
 
     function getNamespacePrefix(json, ns) {
@@ -909,6 +912,16 @@ function TTMLParser() {
             return ttml.tt['ttp:cellResolution'].split(' ').map(parseFloat);
         } else {
             return defaultCellResolution;
+        }
+    }
+
+    //Return the cellResolution defined by the TTML document.
+    function getFrameRateMultiplier() {
+        var defaultFrameRateMultiplier = [1, 1]; // Hiventy default cellResolution.
+        if (ttml.tt.hasOwnProperty('ttp:frameRateMultiplier')) {
+            return ttml.tt['ttp:frameRateMultiplier'].split(' ').map(parseFloat);
+        } else {
+            return defaultFrameRateMultiplier;
         }
     }
 
