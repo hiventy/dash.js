@@ -918,7 +918,8 @@ function TTMLParser() {
     //Return the cellResolution defined by the TTML document.
     function getFrameRateMultiplier() {
         var defaultFrameRateMultiplier = [1, 1]; // Hiventy default cellResolution.
-        if (ttml.tt.hasOwnProperty('ttp:frameRateMultiplier')) {
+        var dropMode = ttml.tt['ttp:dropMode'] || 'nonDrop';
+        if (ttml.tt.hasOwnProperty('ttp:frameRateMultiplier') && dropMode !== 'dropNTSC') {
             return ttml.tt['ttp:frameRateMultiplier'].split(' ').map(parseFloat);
         } else {
             return defaultFrameRateMultiplier;
