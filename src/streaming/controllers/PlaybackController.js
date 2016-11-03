@@ -28,13 +28,13 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-import BufferController from './BufferController.js';
-import URIQueryAndFragmentModel from '../models/URIQueryAndFragmentModel.js';
-import MediaPlayerModel from '../../streaming/models/MediaPlayerModel.js';
-import EventBus from '../../core/EventBus.js';
-import Events from '../../core/events/Events.js';
-import FactoryMaker from '../../core/FactoryMaker.js';
-import Debug from '../../core/Debug.js';
+import BufferController from './BufferController';
+import URIQueryAndFragmentModel from '../models/URIQueryAndFragmentModel';
+import MediaPlayerModel from '../../streaming/models/MediaPlayerModel';
+import EventBus from '../../core/EventBus';
+import Events from '../../core/events/Events';
+import FactoryMaker from '../../core/FactoryMaker';
+import Debug from '../../core/Debug';
 
 function PlaybackController() {
 
@@ -115,8 +115,13 @@ function PlaybackController() {
         if (element) {
             element.autoplay = true;
             const p = element.play();
-            if (p && p instanceof Promise) {
-                p.catch(e => { console.log(e); });
+            if (p && (typeof Promise !== 'undefined') && (p instanceof Promise)) {
+                p.catch((e) => {
+                    if (e.name === 'NotAllowedError') {
+                        eventBus.trigger(Events.PLAYBACK_NOT_ALLOWED);
+                    }
+                    log(`Caught pending play exception - continuing (${e})`);
+                });
             }
         } else {
             playOnceInitialized = true;
@@ -179,9 +184,11 @@ function PlaybackController() {
 
     /**
      * Computes the desirable delay for the live edge to avoid a risk of getting 404 when playing at the bleeding edge
-     * @returns {Number} object
+     * @param {number} fragmentDuration - seconds?
+     * @param {number} dvrWindowSize - seconds?
+     * @returns {number} object
      * @memberof PlaybackController#
-     * */
+     */
     function computeLiveDelay(fragmentDuration, dvrWindowSize) {
         var mpd = dashManifestModel.getMpd(manifestModel.getValue());
 
@@ -252,13 +259,20 @@ function PlaybackController() {
     }
 
     /**
-     * @param streamInfo object
-     * @returns {Number} object
+     * @param {boolean} ignoreStartOffset - ignore URL fragment start offset if true
+     * @returns {number} object
      * @memberof PlaybackController#
      */
     function getStreamStartTime(ignoreStartOffset) {
         let presentationStartTime;
-        let startTimeOffset = !ignoreStartOffset ? parseInt(URIQueryAndFragmentModel(context).getInstance().getURIFragmentData().s, 10) : NaN;
+        let fragData = URIQueryAndFragmentModel(context).getInstance().getURIFragmentData();
+        let fragS = parseInt(fragData.s, 10);
+        let fragT = parseInt(fragData.t, 10);
+        let startTimeOffset = NaN;
+
+        if (!ignoreStartOffset) {
+            startTimeOffset = !isNaN(fragS) ? fragS : fragT;
+        }
 
         if (isDynamic) {
             if (!isNaN(startTimeOffset) && startTimeOffset > 1262304000) {
