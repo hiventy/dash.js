@@ -289,10 +289,10 @@ function SegmentBaseLoader() {
             return;
         }
 
-        request.open('GET', requestModifier.modifyRequestURL(info.url));
+        request.open('GET', requestModifier.modifyRequestURL(info.url, info));
         request.responseType = 'arraybuffer';
         request.setRequestHeader('Range', 'bytes=' + info.range.start + '-' + info.range.end);
-        request = requestModifier.modifyRequestHeader(request);
+        request = requestModifier.modifyRequestHeader(request, info);
         request.send(null);
     }
 

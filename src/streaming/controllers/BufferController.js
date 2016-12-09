@@ -218,7 +218,7 @@ function BufferController(config) {
             return;
         }
 
-        if (!isNaN(appendedBytesInfo.index)) {
+        if (!isNaN(appendedBytesInfo.index)) { // BufferController.js:240 Uncaught TypeError: Cannot read property 'index' of undefined
             maxAppendedIndex = Math.max(appendedBytesInfo.index, maxAppendedIndex);
             checkIfBufferingCompleted();
         }
@@ -387,7 +387,7 @@ function BufferController(config) {
 
         let removeEnd = (req && !isNaN(req.startTime)) ? req.startTime : Math.floor(currentTime);
         if ((range === null) && (buffer.buffered.length > 0)) {
-            removeEnd = buffer.buffered.end(buffer.buffered.length - 1 );
+            removeEnd = buffer.buffered.end(buffer.buffered.length - 1 ); // BufferController.js:411 Uncaught DOMException: Failed to execute 'start' on 'TimeRanges': The index provided (0) is greater than or equal to the maximum bound (0)
         }
 
         return {start: buffer.buffered.start(0), end: removeEnd};
