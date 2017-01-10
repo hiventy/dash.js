@@ -378,7 +378,10 @@ function TTMLParser() {
                         lineHeight = {};
                         linePadding = {};
                         fontSize = {};
-
+                        var cueID = '';
+                        if (paragraph.hasOwnProperty('id') || paragraph.hasOwnProperty('xml:id')) {
+                            cueID = paragraph['xml:id'] || paragraph.id;
+                        }
                         /**
                          * Find the region defined for the cue.
                          */
@@ -471,6 +474,7 @@ function TTMLParser() {
                             regions: regions,
                             regionID: regionID,
                             cueID: finalCue.id,
+                            origCueID: cueID, // compat mode, remove after 0.5 EOL ?
                             videoHeight: videoHeight,
                             videoWidth: videoWidth,
                             cellResolution: cellResolution,
