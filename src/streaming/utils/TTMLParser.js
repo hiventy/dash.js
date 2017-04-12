@@ -1221,7 +1221,7 @@ function TTMLParser() {
             if (el.hasOwnProperty('span')) {
 
                 // Stock the span subtitles in an array (in case there are only one value).
-                var spanElements = el.span.__children;
+                var spanElements = el.span.__children || [{ '#text': el.span }];
 
                 // Create the span element.
                 var spanHTMLElement = document.createElement('span');
