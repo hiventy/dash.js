@@ -94,13 +94,7 @@ function TextTracks() {
         var kind = textTrackQueue[i].kind;
         var label = textTrackQueue[i].label !== undefined ? textTrackQueue[i].label : textTrackQueue[i].lang;
         var lang = textTrackQueue[i].lang;
-        var track = isChrome ? document.createElement('track') : video.addTextTrack(kind, label, lang);
-
-        if (isChrome) {
-            track.kind = kind;
-            track.label = label;
-            track.srclang = lang;
-        }
+        var track = video.addTextTrack(kind, label, lang);
 
         return track;
     }
@@ -139,9 +133,6 @@ function TextTracks() {
                     /*jshint -W024 */
                     track.default = true;
                     defaultIndex = i;
-                }
-                if (isChrome) {
-                    video.appendChild(track);
                 }
                 var textTrack = video.textTracks[i];
                 textTrack.nonAddedCues = [];
@@ -522,13 +513,9 @@ function TextTracks() {
     function deleteAllTextTracks() {
         var ln = trackElementArr.length;
         for (var i = 0; i < ln; i++) {
-            if (isChrome) {
-                video.removeChild(trackElementArr[i]);
-            }else {
-                var track = getTextTrack.call(this, i);
-                track.nonAddedCues = [];
-                deleteTrackCues.call(this, track);
-            }
+            var track = getTextTrack.call(this, i);
+            track.nonAddedCues = [];
+            deleteTrackCues.call(this, track);
 
         }
         trackElementArr = [];
