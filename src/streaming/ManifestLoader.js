@@ -28,15 +28,18 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
+import Constants from './constants/Constants';
 import XlinkController from './controllers/XlinkController';
-import XHRLoader from './XHRLoader';
+import HTTPLoader from './net/HTTPLoader';
 import URLUtils from './utils/URLUtils';
 import TextRequest from './vo/TextRequest';
-import Error from './vo/Error';
+import DashJSError from './vo/DashJSError';
 import {HTTPRequest} from './vo/metrics/HTTPRequest';
 import EventBus from '../core/EventBus';
 import Events from '../core/events/Events';
 import FactoryMaker from '../core/FactoryMaker';
+import DashParser from '../dash/parser/DashParser';
+import Debug from '../core/Debug';
 
 const MANIFEST_LOADER_ERROR_PARSING_FAILURE = 1;
 const MANIFEST_LOADER_ERROR_LOADING_FAILURE = 2;
@@ -44,29 +47,38 @@ const MANIFEST_LOADER_MESSAGE_PARSING_FAILURE = 'parsing failed';
 
 function ManifestLoader(config) {
 
+    config = config || {};
     const context = this.context;
     const eventBus = EventBus(context).getInstance();
     const urlUtils = URLUtils(context).getInstance();
-    const parser = config.parser;
+    const debug = Debug(context).getInstance();
+    const log = debug.log;
 
     let instance,
-        xhrLoader,
-        xlinkController;
+        httpLoader,
+        xlinkController,
+        parser;
+    let mssHandler = config.mssHandler;
+    let errHandler = config.errHandler;
 
     function setup() {
         eventBus.on(Events.XLINK_READY, onXlinkReady, instance);
 
-        xhrLoader = XHRLoader(context).create({
-            errHandler: config.errHandler,
+        httpLoader = HTTPLoader(context).create({
+            errHandler: errHandler,
             metricsModel: config.metricsModel,
+            mediaPlayerModel: config.mediaPlayerModel,
             requestModifier: config.requestModifier
         });
 
         xlinkController = XlinkController(context).create({
-            errHandler: config.errHandler,
+            errHandler: errHandler,
             metricsModel: config.metricsModel,
+            mediaPlayerModel: config.mediaPlayerModel,
             requestModifier: config.requestModifier
         });
+
+        parser = null;
     }
 
     function onXlinkReady(event) {
@@ -77,32 +89,88 @@ function ManifestLoader(config) {
         );
     }
 
-    function load (url) {
+    function createParser(data) {
+        let parser = null;
+        // Analyze manifest content to detect protocol and select appropriate parser
+        if (data.indexOf('SmoothStreamingMedia') > -1) {
+            //do some business to transform it into a Dash Manifest
+            if (mssHandler) {
+                parser = mssHandler.createMssParser();
+                mssHandler.registerEvents();
+            }
+            return parser;
+        } else if (data.indexOf('MPD') > -1) {
+            return DashParser(context).create();
+        } else {
+            return parser;
+        }
+    }
+
+    function load(url) {
         const request = new TextRequest(url, HTTPRequest.MPD_TYPE);
 
-        xhrLoader.load({
+        httpLoader.load({
             request: request,
-            success: function (data, textStatus, xhr) {
-                var actualUrl;
-                var baseUri;
+            success: function (data, textStatus, responseURL) {
+                // Manage situations in which success is called after calling reset
+                if (!xlinkController) return;
+
+                let actualUrl,
+                    baseUri,
+                    manifest;
 
                 // Handle redirects for the MPD - as per RFC3986 Section 5.1.3
                 // also handily resolves relative MPD URLs to absolute
-                if (xhr.responseURL && xhr.responseURL !== url) {
-                    baseUri = urlUtils.parseBaseUrl(xhr.responseURL);
-                    actualUrl = xhr.responseURL;
+                if (responseURL && responseURL !== url) {
+                    baseUri = urlUtils.parseBaseUrl(responseURL);
+                    actualUrl = responseURL;
                 } else {
                     // usually this case will be caught and resolved by
-                    // xhr.responseURL above but it is not available for IE11
+                    // responseURL above but it is not available for IE11 and Edge/12 and Edge/13
                     // baseUri must be absolute for BaseURL resolution later
                     if (urlUtils.isRelative(url)) {
-                        url = urlUtils.parseBaseUrl(window.location.href) + url;
+                        url = urlUtils.resolve(url, window.location.href);
                     }
 
                     baseUri = urlUtils.parseBaseUrl(url);
                 }
 
-                const manifest = parser.parse(data, xlinkController);
+                // Create parser according to manifest type
+                if (parser === null) {
+                    parser = createParser(data);
+                }
+
+                if (parser === null) {
+                    eventBus.trigger(
+                        Events.INTERNAL_MANIFEST_LOADED, {
+                            manifest: null,
+                            error: new DashJSError(
+                                MANIFEST_LOADER_ERROR_PARSING_FAILURE,
+                                `Failed detecting manifest type or manifest type unsupported : ${url}`
+                            )
+                        }
+                    );
+                    return;
+                }
+
+                // init xlinkcontroller with matchers and iron object from created parser
+                xlinkController.setMatchers(parser.getMatchers());
+                xlinkController.setIron(parser.getIron());
+
+                try {
+                    manifest = parser.parse(data);
+                } catch (e) {
+                    eventBus.trigger(
+                        Events.INTERNAL_MANIFEST_LOADED, {
+                            manifest: null,
+                            error: new DashJSError(
+                               MANIFEST_LOADER_ERROR_PARSING_FAILURE,
+                                `Failed parsing manifest : ${url}`
+                           )
+                        }
+                    );
+                    return;
+                }
 
                 if (manifest) {
                     manifest.url = actualUrl || url;
@@ -112,6 +180,13 @@ function ManifestLoader(config) {
                         manifest.originalUrl = manifest.url;
                     }
 
+                    // In the following, we only use the first Location entry even if many are available
+                    // Compare with ManifestUpdater/DashManifestModel
+                    if (manifest.hasOwnProperty(Constants.LOCATION)) {
+                        baseUri = urlUtils.parseBaseUrl(manifest.Location_asArray[0]);
+                        log('BaseURI set by Location to: ' + baseUri);
+                    }
+
                     manifest.baseUri = baseUri;
                     manifest.loadedTime = new Date();
                     xlinkController.resolveManifestOnLoad(manifest);
@@ -119,7 +194,7 @@ function ManifestLoader(config) {
                     eventBus.trigger(
                         Events.INTERNAL_MANIFEST_LOADED, {
                             manifest: null,
-                            error: new Error(
+                            error: new DashJSError(
                                 MANIFEST_LOADER_ERROR_PARSING_FAILURE,
                                 MANIFEST_LOADER_MESSAGE_PARSING_FAILURE
                             )
@@ -127,11 +202,11 @@ function ManifestLoader(config) {
                     );
                 }
             },
-            error: function (xhr, statusText, errorText) {
+            error: function (request, statusText, errorText) {
                 eventBus.trigger(
                     Events.INTERNAL_MANIFEST_LOADED, {
                         manifest: null,
-                        error: new Error(
+                        error: new DashJSError(
                             MANIFEST_LOADER_ERROR_LOADING_FAILURE,
                             `Failed loading manifest: ${url}, ${errorText}`
                         )
@@ -149,9 +224,13 @@ function ManifestLoader(config) {
             xlinkController = null;
         }
 
-        if (xhrLoader) {
-            xhrLoader.abort();
-            xhrLoader = null;
+        if (httpLoader) {
+            httpLoader.abort();
+            httpLoader = null;
+        }
+
+        if (mssHandler) {
+            mssHandler.reset();
         }
     }
 
@@ -170,4 +249,5 @@ ManifestLoader.__dashjs_factory_name = 'ManifestLoader';
 const factory = FactoryMaker.getClassFactory(ManifestLoader);
 factory.MANIFEST_LOADER_ERROR_PARSING_FAILURE = MANIFEST_LOADER_ERROR_PARSING_FAILURE;
 factory.MANIFEST_LOADER_ERROR_LOADING_FAILURE = MANIFEST_LOADER_ERROR_LOADING_FAILURE;
+FactoryMaker.updateClassFactory(ManifestLoader.__dashjs_factory_name, factory);
 export default factory;

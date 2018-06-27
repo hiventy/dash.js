@@ -37,21 +37,30 @@
  */
 
 import CommonEncryption from '../CommonEncryption';
-import FactoryMaker from '../../../core/FactoryMaker';
+import ProtectionConstants from '../../constants/ProtectionConstants';
 
 const uuid = 'edef8ba9-79d6-4ace-a3c8-27dcd51d21ed';
-const systemString = 'com.widevine.alpha';
+const systemString = ProtectionConstants.WIDEVINE_KEYSTEM_STRING;
 const schemeIdURI = 'urn:uuid:' + uuid;
 
-function KeySystemWidevine() {
+function KeySystemWidevine(config) {
 
+    config = config || {};
     let instance;
+    let protData = null;
+    const BASE64 = config.BASE64;
 
-    function getInitData(cp) {
-        return CommonEncryption.parseInitDataFromContentProtection(cp);
+    function init(protectionData) {
+        if (protectionData) {
+            protData = protectionData;
+        }
     }
 
-    function getRequestHeadersFromMessage(/*message*/) {
+    function getInitData(cp) {
+        return CommonEncryption.parseInitDataFromContentProtection(cp, BASE64);
+    }
+
+    function getRequestHeadersFromMessage( /*message*/ ) {
         return null;
     }
 
@@ -59,7 +68,21 @@ function KeySystemWidevine() {
         return new Uint8Array(message);
     }
 
-    function getLicenseServerURLFromInitData(/*initData*/) {
+    function getLicenseServerURLFromInitData( /*initData*/ ) {
+        return null;
+    }
+
+    function getCDMData() {
+        return null;
+    }
+
+    function getSessionId(cp) {
+        // Get sessionId from protectionData or from manifest
+        if (protData && protData.sessionId) {
+            return protData.sessionId;
+        } else if (cp && cp.sessionId) {
+            return cp.sessionId;
+        }
         return null;
     }
 
@@ -67,14 +90,17 @@ function KeySystemWidevine() {
         uuid: uuid,
         schemeIdURI: schemeIdURI,
         systemString: systemString,
+        init: init,
         getInitData: getInitData,
         getRequestHeadersFromMessage: getRequestHeadersFromMessage,
         getLicenseRequestFromMessage: getLicenseRequestFromMessage,
         getLicenseServerURLFromInitData: getLicenseServerURLFromInitData,
+        getCDMData: getCDMData,
+        getSessionId: getSessionId
     };
 
     return instance;
 }
 
 KeySystemWidevine.__dashjs_factory_name = 'KeySystemWidevine';
-export default FactoryMaker.getSingletonFactory(KeySystemWidevine);
+export default dashjs.FactoryMaker.getSingletonFactory(KeySystemWidevine); /* jshint ignore:line */

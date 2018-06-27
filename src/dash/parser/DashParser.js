@@ -28,22 +28,21 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-import ErrorHandler from '../../streaming/utils/ErrorHandler';
 import FactoryMaker from '../../core/FactoryMaker';
 import Debug from '../../core/Debug';
-import ObjectIron from '../../../externals/objectiron';
+import ObjectIron from './objectiron';
 import X2JS from '../../../externals/xml2json';
+import StringMatcher from './matchers/StringMatcher';
 import DurationMatcher from './matchers/DurationMatcher';
 import DateTimeMatcher from './matchers/DateTimeMatcher';
 import NumericMatcher from './matchers/NumericMatcher';
 import RepresentationBaseValuesMap from './maps/RepresentationBaseValuesMap';
 import SegmentValuesMap from './maps/SegmentValuesMap';
 
-function DashParser(/*config*/) {
+function DashParser() {
 
     const context = this.context;
     const log = Debug(context).getInstance().log;
-    const errorHandler = ErrorHandler(context).getInstance();
 
     let instance,
         matchers,
@@ -54,49 +53,61 @@ function DashParser(/*config*/) {
         matchers = [
             new DurationMatcher(),
             new DateTimeMatcher(),
-            new NumericMatcher()
+            new NumericMatcher(),
+            new StringMatcher()   // last in list to take precedence over NumericMatcher
         ];
 
-        converter = new X2JS(matchers, '', true);
+        converter = new X2JS({
+            escapeMode:         false,
+            attributePrefix:    '',
+            arrayAccessForm:    'property',
+            emptyNodeForm:      'object',
+            stripWhitespaces:   false,
+            enableToStringFunc: false,
+            ignoreRoot:         true,
+            matchers:           matchers
+        });
 
-        objectIron = new ObjectIron([
-            new RepresentationBaseValuesMap(),
-            new SegmentValuesMap()
-        ]);
+        objectIron = ObjectIron(context).create({
+            adaptationset: new RepresentationBaseValuesMap(),
+            period: new SegmentValuesMap()
+        });
     }
 
-    function parse(data, xlinkController) {
-        var manifest;
+    function getMatchers() {
+        return matchers;
+    }
 
-        try {
-            const startTime = window.performance.now();
+    function getIron() {
+        return objectIron;
+    }
 
-            manifest = converter.xml_str2json(data);
+    function parse(data) {
+        let manifest;
 
-            if (!manifest) {
-                throw new Error('parser error');
-            }
+        const startTime = window.performance.now();
 
-            const jsonTime = window.performance.now();
+        manifest = converter.xml_str2json(data);
 
-            objectIron.run(manifest);
-
-            const ironedTime = window.performance.now();
-
-            xlinkController.setMatchers(matchers);
-            xlinkController.setIron(objectIron);
-
-            log('Parsing complete: ( xml2json: ' + (jsonTime - startTime).toPrecision(3) + 'ms, objectiron: ' + (ironedTime - jsonTime).toPrecision(3) + 'ms, total: ' + ((ironedTime - startTime) / 1000).toPrecision(3) + 's)');
-        } catch (err) {
-            errorHandler.manifestError('parsing the manifest failed', 'parse', data, err);
-            return null;
+        if (!manifest) {
+            throw new Error('parsing the manifest failed');
         }
+
+        const jsonTime = window.performance.now();
+
+        objectIron.run(manifest);
+
+        const ironedTime = window.performance.now();
+
+        log('Parsing complete: ( xml2json: ' + (jsonTime - startTime).toPrecision(3) + 'ms, objectiron: ' + (ironedTime - jsonTime).toPrecision(3) + 'ms, total: ' + ((ironedTime - startTime) / 1000).toPrecision(3) + 's)');
 
         return manifest;
     }
 
     instance = {
-        parse: parse
+        parse: parse,
+        getMatchers: getMatchers,
+        getIron: getIron
     };
 
     setup();

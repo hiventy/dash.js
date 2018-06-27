@@ -28,12 +28,14 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-
-import Error from './../vo/Error';
+import Constants from '../constants/Constants';
+import DashJSError from './../vo/DashJSError';
+import {HTTPRequest} from './../vo/metrics/HTTPRequest';
 import EventBus from './../../core/EventBus';
 import Events from './../../core/events/Events';
 import FactoryMaker from '../../core/FactoryMaker';
 import Debug from '../../core/Debug';
+import URLUtils from '../utils/URLUtils';
 
 const TIME_SYNC_FAILED_ERROR_CODE = 1;
 const HTTP_TIMEOUT_MS = 5000;
@@ -44,6 +46,8 @@ function TimeSyncController() {
     let log = Debug(context).getInstance().log;
     let eventBus = EventBus(context).getInstance();
 
+    const urlUtils = URLUtils(context).getInstance();
+
     let instance,
         offsetToDeviceTimeMs,
         isSynchronizing,
@@ -51,7 +55,8 @@ function TimeSyncController() {
         useManifestDateHeaderTimeSource,
         handlers,
         metricsModel,
-        dashMetrics;
+        dashMetrics,
+        baseURLController;
 
     function initialize(timingSources, useManifestDateHeader) {
         useManifestDateHeaderTimeSource = useManifestDateHeader;
@@ -100,6 +105,10 @@ function TimeSyncController() {
         if (config.dashMetrics) {
             dashMetrics = config.dashMetrics;
         }
+
+        if (config.baseURLController) {
+            baseURLController = config.baseURLController;
+        }
     }
 
     function getOffsetToDeviceTimeMs() {
@@ -131,15 +140,15 @@ function TimeSyncController() {
     // which is natively understood by javascript Date parser
     function alternateXsdatetimeDecoder(xsdatetimeStr) {
         // taken from DashParser - should probably refactor both uses
-        var SECONDS_IN_MIN = 60;
-        var MINUTES_IN_HOUR = 60;
-        var MILLISECONDS_IN_SECONDS = 1000;
-        var datetimeRegex = /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2})(?::([0-9]*)(\.[0-9]*)?)?(?:([+\-])([0-9]{2})([0-9]{2}))?/;
+        const SECONDS_IN_MIN = 60;
+        const MINUTES_IN_HOUR = 60;
+        const MILLISECONDS_IN_SECONDS = 1000;
+        let datetimeRegex = /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2})(?::([0-9]*)(\.[0-9]*)?)?(?:([+\-])([0-9]{2})([0-9]{2}))?/;
 
-        var utcDate,
+        let utcDate,
             timezoneOffset;
 
-        var match = datetimeRegex.exec(xsdatetimeStr);
+        let match = datetimeRegex.exec(xsdatetimeStr);
 
         // If the string does not contain a timezone offset different browsers can interpret it either
         // as UTC or as a local time so we have to parse the string manually to normalize the given date value for
@@ -166,7 +175,7 @@ function TimeSyncController() {
     // which is supported natively by Date.parse. if that fails, try a
     // regex-based version used elsewhere in this application.
     function xsdatetimeDecoder(xsdatetimeStr) {
-        var parsedDate = Date.parse(xsdatetimeStr);
+        let parsedDate = Date.parse(xsdatetimeStr);
 
         if (isNaN(parsedDate)) {
             parsedDate = alternateXsdatetimeDecoder(xsdatetimeStr);
@@ -191,7 +200,7 @@ function TimeSyncController() {
     }
 
     function directHandler(xsdatetimeStr, onSuccessCB, onFailureCB) {
-        var time = xsdatetimeDecoder(xsdatetimeStr);
+        let time = xsdatetimeDecoder(xsdatetimeStr);
 
         if (!isNaN(time)) {
             onSuccessCB(time);
@@ -202,13 +211,13 @@ function TimeSyncController() {
     }
 
     function httpHandler(decoder, url, onSuccessCB, onFailureCB, isHeadRequest) {
-        var oncomplete,
+        let oncomplete,
             onload;
-        var complete = false;
-        var req = new XMLHttpRequest();
+        let complete = false;
+        let req = new XMLHttpRequest();
 
-        var verb = isHeadRequest ? 'HEAD' : 'GET';
-        var urls = url.match(/\S+/g);
+        let verb = isHeadRequest ? HTTPRequest.HEAD : HTTPRequest.GET;
+        let urls = url.match(/\S+/g);
 
         // according to ISO 23009-1, url could be a white-space
         // separated list of URLs. just handle one at a time.
@@ -232,7 +241,7 @@ function TimeSyncController() {
         };
 
         onload = function () {
-            var time,
+            let time,
                 result;
 
             if (req.status === 200) {
@@ -250,6 +259,14 @@ function TimeSyncController() {
             }
         };
 
+        if (urlUtils.isRelative(url)) {
+            // passing no path to resolve will return just MPD BaseURL/baseUri
+            const baseUrl = baseURLController.resolve();
+            if (baseUrl) {
+                url = urlUtils.resolve(url, baseUrl.url);
+            }
+        }
+
         req.open(verb, url);
         req.timeout = HTTP_TIMEOUT_MS || 0;
         req.onload = onload;
@@ -262,36 +279,36 @@ function TimeSyncController() {
     }
 
     function checkForDateHeader() {
-        var metrics = metricsModel.getReadOnlyMetricsFor('stream');
-        var dateHeaderValue = dashMetrics.getLatestMPDRequestHeaderValueByID(metrics, 'Date');
-        var dateHeaderTime = dateHeaderValue !== null ? new Date(dateHeaderValue).getTime() : Number.NaN;
+        let metrics = metricsModel.getReadOnlyMetricsFor(Constants.STREAM);
+        let dateHeaderValue = dashMetrics.getLatestMPDRequestHeaderValueByID(metrics, 'Date');
+        let dateHeaderTime = dateHeaderValue !== null ? new Date(dateHeaderValue).getTime() : Number.NaN;
 
         if (!isNaN(dateHeaderTime)) {
             setOffsetMs(dateHeaderTime - new Date().getTime());
             completeTimeSyncSequence(false, dateHeaderTime / 1000, offsetToDeviceTimeMs);
-        }else {
+        } else {
             completeTimeSyncSequence(true);
         }
     }
 
     function completeTimeSyncSequence(failed, time, offset) {
         setIsSynchronizing(false);
-        eventBus.trigger(Events.TIME_SYNCHRONIZATION_COMPLETED, { time: time, offset: offset, error: failed ? new Error(TIME_SYNC_FAILED_ERROR_CODE) : null });
+        eventBus.trigger(Events.TIME_SYNCHRONIZATION_COMPLETED, { time: time, offset: offset, error: failed ? new DashJSError(TIME_SYNC_FAILED_ERROR_CODE) : null });
     }
 
     function attemptSync(sources, sourceIndex) {
 
         // if called with no sourceIndex, use zero (highest priority)
-        var  index = sourceIndex || 0;
+        let  index = sourceIndex || 0;
 
         // the sources should be ordered in priority from the manifest.
         // try each in turn, from the top, until either something
         // sensible happens, or we run out of sources to try.
-        var source = sources[index];
+        let source = sources[index];
 
         // callback to emit event to listeners
-        var onComplete = function (time, offset) {
-            var failed = !time || !offset;
+        const onComplete = function (time, offset) {
+            let failed = !time || !offset;
             if (failed && useManifestDateHeaderTimeSource) {
                 //Before falling back to binary search , check if date header exists on MPD. if so, use for a time source.
                 checkForDateHeader();
@@ -310,8 +327,8 @@ function TimeSyncController() {
                     source.value,
                     function (serverTime) {
                         // the timing source returned something useful
-                        var deviceTime = new Date().getTime();
-                        var offset = serverTime - deviceTime;
+                        let deviceTime = new Date().getTime();
+                        let offset = serverTime - deviceTime;
 
                         setOffsetMs(offset);
 
@@ -359,4 +376,5 @@ TimeSyncController.__dashjs_factory_name = 'TimeSyncController';
 let factory = FactoryMaker.getSingletonFactory(TimeSyncController);
 factory.TIME_SYNC_FAILED_ERROR_CODE = TIME_SYNC_FAILED_ERROR_CODE;
 factory.HTTP_TIMEOUT_MS = HTTP_TIMEOUT_MS;
+FactoryMaker.updateSingletonFactory(TimeSyncController.__dashjs_factory_name, factory);
 export default factory;

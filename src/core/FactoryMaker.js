@@ -34,13 +34,16 @@
 let FactoryMaker = (function () {
 
     let instance;
-    let extensions = [];
-    let singletonContexts = [];
+    const singletonContexts = [];
+    const singletonFactories = {};
+    const classFactories = {};
 
     function extend(name, childInstance, override, context) {
-        let extensionContext = getExtensionContext(context);
-        if (!extensionContext[name] && childInstance) {
-            extensionContext[name] = {instance: childInstance, override: override};
+        if (!context[name] && childInstance) {
+            context[name] = {
+                instance: childInstance,
+                override: override
+            };
         }
     }
 
@@ -57,8 +60,8 @@ let FactoryMaker = (function () {
      * @instance
      */
     function getSingletonInstance(context, className) {
-        for (let i in singletonContexts) {
-            let obj = singletonContexts[i];
+        for (const i in singletonContexts) {
+            const obj = singletonContexts[i];
             if (obj.context === context && obj.name === className) {
                 return obj.instance;
             }
@@ -76,82 +79,159 @@ let FactoryMaker = (function () {
      * @instance
      */
     function setSingletonInstance(context, className, instance) {
-        for (let i in singletonContexts) {
-            let obj = singletonContexts[i];
+        for (const i in singletonContexts) {
+            const obj = singletonContexts[i];
             if (obj.context === context && obj.name === className) {
                 singletonContexts[i].instance = instance;
                 return;
             }
         }
-        singletonContexts.push({ name: className, context: context, instance: instance });
+        singletonContexts.push({
+            name: className,
+            context: context,
+            instance: instance
+        });
+    }
+
+    /*------------------------------------------------------------------------------------------*/
+
+    // Factories storage Management
+
+    /*------------------------------------------------------------------------------------------*/
+
+    function getFactoryByName(name, factoriesArray) {
+        return factoriesArray[name];
+    }
+
+    function updateFactory(name, factory, factoriesArray) {
+        if (name in factoriesArray) {
+            factoriesArray[name] = factory;
+        }
+    }
+
+    /*------------------------------------------------------------------------------------------*/
+
+    // Class Factories Management
+
+    /*------------------------------------------------------------------------------------------*/
+
+    function updateClassFactory(name, factory) {
+        updateFactory(name, factory, classFactories);
+    }
+
+    function getClassFactoryByName(name) {
+        return getFactoryByName(name, classFactories);
     }
 
     function getClassFactory(classConstructor) {
-        return function (context) {
-            if (context === undefined) {
-                context = {};
-            }
-            return {
-                create: function () {
-                    return merge(classConstructor.__dashjs_factory_name, classConstructor.apply({ context: context }, arguments), context, arguments);
+        let factory = getFactoryByName(classConstructor.__dashjs_factory_name, classFactories);
+
+        if (!factory) {
+            factory = function (context) {
+                if (context === undefined) {
+                    context = {};
                 }
+                return {
+                    create: function () {
+                        return merge(classConstructor, context, arguments);
+                    }
+                };
             };
-        };
+
+            classFactories[classConstructor.__dashjs_factory_name] = factory; // store factory
+        }
+        return factory;
+    }
+
+    /*------------------------------------------------------------------------------------------*/
+
+    // Singleton Factory MAangement
+
+    /*------------------------------------------------------------------------------------------*/
+
+    function updateSingletonFactory(name, factory) {
+        updateFactory(name, factory, singletonFactories);
+    }
+
+    function getSingletonFactoryByName(name) {
+        return getFactoryByName(name, singletonFactories);
     }
 
     function getSingletonFactory(classConstructor) {
-        return function (context) {
-            let instance;
-            if (context === undefined) {
-                context = {};
-            }
-            return {
-                getInstance: function () {
-                    // If we don't have an instance yet check for one on the context
-                    if (!instance) {
-                        instance = getSingletonInstance(context, classConstructor.__dashjs_factory_name);
-                    }
-                    // If there's no instance on the context then create one
-                    if (!instance) {
-                        instance = merge(classConstructor.__dashjs_factory_name, classConstructor.apply({ context: context }, arguments), context, arguments);
-                        singletonContexts.push({ name: classConstructor.__dashjs_factory_name, context: context, instance: instance });
-                    }
-                    return instance;
+        let factory = getFactoryByName(classConstructor.__dashjs_factory_name, singletonFactories);
+        if (!factory) {
+            factory = function (context) {
+                let instance;
+                if (context === undefined) {
+                    context = {};
                 }
+                return {
+                    getInstance: function () {
+                        // If we don't have an instance yet check for one on the context
+                        if (!instance) {
+                            instance = getSingletonInstance(context, classConstructor.__dashjs_factory_name);
+                        }
+                        // If there's no instance on the context then create one
+                        if (!instance) {
+                            instance = merge(classConstructor, context, arguments);
+                            singletonContexts.push({
+                                name: classConstructor.__dashjs_factory_name,
+                                context: context,
+                                instance: instance
+                            });
+                        }
+                        return instance;
+                    }
+                };
             };
-        };
+            singletonFactories[classConstructor.__dashjs_factory_name] = factory; // store factory
+        }
+
+        return factory;
     }
 
-    function merge(name, classConstructor, context, args) {
-        let extensionContext = getExtensionContext(context);
-        let extensionObject = extensionContext[name];
+    function merge(classConstructor, context, args) {
+
+        let classInstance;
+        const className = classConstructor.__dashjs_factory_name;
+        const extensionObject = context[className];
+
         if (extensionObject) {
+
             let extension = extensionObject.instance;
+
             if (extensionObject.override) { //Override public methods in parent but keep parent.
-                extension = extension.apply({ context: context, factory: instance, parent: classConstructor}, args);
+
+                classInstance = classConstructor.apply({context}, args);
+                extension = extension.apply({
+                    context,
+                    factory: instance,
+                    parent: classInstance
+                }, args);
+
                 for (const prop in extension) {
-                    if (classConstructor.hasOwnProperty(prop)) {
-                        classConstructor[prop] = extension[prop];
+                    if (classInstance.hasOwnProperty(prop)) {
+                        classInstance[prop] = extension[prop];
                     }
                 }
-            } else { //replace parent object completely with new object. Same as dijon.
-                return extension.apply({ context: context, factory: instance}, args);
-            }
-        }
-        return classConstructor;
-    }
 
-    function getExtensionContext(context) {
-        let extensionContext;
-        extensions.forEach(function (obj) {
-            if (obj === context) {
-                extensionContext = obj;
+            } else { //replace parent object completely with new object. Same as dijon.
+
+                return extension.apply({
+                    context,
+                    factory: instance
+                }, args);
+
             }
-        });
-        if (!extensionContext) {
-            extensionContext = extensions.push(context);
+        } else {
+            // Create new instance of the class
+            classInstance = classConstructor.apply({context}, args);
         }
-        return extensionContext;
+
+        // Add getClassName function to class instance prototype (used by Debug)
+        classInstance.getClassName = function () {return className;};
+
+        return classInstance;
     }
 
     instance = {
@@ -159,7 +239,11 @@ let FactoryMaker = (function () {
         getSingletonInstance: getSingletonInstance,
         setSingletonInstance: setSingletonInstance,
         getSingletonFactory: getSingletonFactory,
-        getClassFactory: getClassFactory
+        getSingletonFactoryByName: getSingletonFactoryByName,
+        updateSingletonFactory: updateSingletonFactory,
+        getClassFactory: getClassFactory,
+        getClassFactoryByName: getClassFactoryByName,
+        updateClassFactory: updateClassFactory
     };
 
     return instance;
