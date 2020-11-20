@@ -386,7 +386,7 @@ function BufferController(config) {
         const range = sourceBufferController.getBufferRange(buffer, currentTime);
 
         let removeEnd = (req && !isNaN(req.startTime)) ? req.startTime : Math.floor(currentTime);
-        if ((range === null) && (buffer.buffered.length > 0)) {
+        if ((range === null || type === 'audio') && (buffer.buffered.length > 0)) {
             removeEnd = buffer.buffered.end(buffer.buffered.length - 1 ); // BufferController.js:411 Uncaught DOMException: Failed to execute 'start' on 'TimeRanges': The index provided (0) is greater than or equal to the maximum bound (0)
         }
 
